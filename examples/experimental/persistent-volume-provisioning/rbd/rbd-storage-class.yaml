@@ -4,7 +4,7 @@ metadata:
    name: slow
 provisioner: kubernetes.io/rbd
 parameters:
-    monitors: 127.0.0.1:6789
+    monitors: 172.16.103.4:6789
     adminId: admin
     adminSecretName: ceph-secret-admin
     adminSecretNamespace: "kube-system"
