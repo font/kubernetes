@@ -1449,7 +1449,7 @@ func (ctrl *PersistentVolumeController) findProvisionablePlugin(claim *v1.Persis
 	if !found {
 		return nil, nil, fmt.Errorf("StorageClass %q not found", claimClass)
 	}
-	class, ok := classObj.(*storage.StorageClass)
+	class, ok := classObj.(*storage.StorageClass) // Find out how this is returning the class and check what class.Provisioner is set as it needs to match 'rbdPluginName'
 	if !ok {
 		return nil, nil, fmt.Errorf("Cannot convert object to StorageClass: %+v", classObj)
 	}

@@ -376,7 +376,7 @@ func (pm *VolumePluginMgr) FindPluginByName(name string) (VolumePlugin, error) {
 
 	// Once we can get rid of legacy names we can reduce this to a map lookup.
 	matches := []string{}
-	for k, v := range pm.plugins {
+	for k, v := range pm.plugins { // It'd be nice to get the list of pm.plugins
 		if v.GetPluginName() == name {
 			matches = append(matches, k)
 		}
