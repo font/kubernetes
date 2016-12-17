@@ -1,8 +1,12 @@
 apiVersion: v1
 kind: Pod
 metadata:
+  labels:
+    test: rbd-pvc-pod
   name: ceph-pv-pod1
 spec:
+  nodeSelector:
+    node-type: ceph-client
   containers:
   - name: ceph-pv-busybox
     image: busybox
