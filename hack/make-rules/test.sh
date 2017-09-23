@@ -354,7 +354,7 @@ checkFDs() {
 
 checkFDs
 
-
+set -x
 # Convert the CSVs to arrays.
 IFS=';' read -a apiVersions <<< "${KUBE_TEST_API_VERSIONS}"
 apiVersionsCount=${#apiVersions[@]}
@@ -364,6 +364,7 @@ for (( i=0; i<${apiVersionsCount}; i++ )); do
   # KUBE_TEST_API sets the version of each group to be tested.
   KUBE_TEST_API="${apiVersion}" runTests "$@"
 done
+set +x
 
 # We might run the tests for multiple versions, but we want to report only
 # one of them to coveralls. Here we report coverage from the last run.

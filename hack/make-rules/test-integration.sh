@@ -66,6 +66,7 @@ cleanup() {
 runTests() {
   kube::log::status "Starting etcd instance"
   CLEANUP_REQUIRED=1
+  set -x
   kube::etcd::start
   kube::log::status "Running integration test cases"
 
@@ -79,6 +80,7 @@ runTests() {
       KUBE_TEST_API_VERSIONS="$1"
 
   cleanup
+  set +x
 }
 
 checkEtcdOnPath() {
