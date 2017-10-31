@@ -74,12 +74,13 @@ type ReplicaSchedulingInfo struct {
 }
 
 type JobStatus struct {
-	//Conditions     []JobCondition
-	StartTime      *metav1.Time
-	CompletionTime *metav1.Time
-	Active         int32
-	Succeeded      int32
-	Failed         int32
+	CompleteCondition JobCondition
+	FailedCondition   JobCondition
+	StartTime         *metav1.Time
+	CompletionTime    *metav1.Time
+	Active            int32
+	Succeeded         int32
+	Failed            int32
 }
 
 type JobScheduleState struct {
@@ -344,38 +345,51 @@ func (a *replicaSchedulingAdapter) ScheduleObject(cluster *federationapi.Cluster
 func (a *jobSchedulingAdapter) ScheduleObject(cluster *federationapi.Cluster, clusterObj pkgruntime.Object, federationObjCopy pkgruntime.Object, schedulingInfo interface{}) (pkgruntime.Object, ScheduleAction, error) {
 	typedSchedulingInfo := schedulingInfo.(*JobSchedulingInfo)
 	clusterScheduleState := typedSchedulingInfo.ScheduleState[cluster.Name]
+	scheduleStatus := typedSchedulingInfo.Status
 
 	if clusterObj != nil {
-		schedulingStatusVal := reflect.ValueOf(typedSchedulingInfo).Elem().FieldByName("Status")
-		objStatusVal := reflect.ValueOf(clusterObj).Elem().FieldByName("Status")
-		for i := 0; i < schedulingStatusVal.NumField(); i++ {
-			schedulingStatusField := schedulingStatusVal.Field(i)
-			schedulingStatusFieldName := schedulingStatusVal.Type().Field(i).Name
-			objStatusField := objStatusVal.FieldByName(schedulingStatusFieldName)
-			if objStatusField.IsValid() {
-				switch t := objStatusField.Interface().(type) {
-				// TODO: Conditions
-				case *metav1.Time:
-					objTime := objStatusField.Interface().(*metav1.Time)
-					if objTime == nil {
-						break
-					}
-					if !schedulingStatusField.IsValid() ||
-						(schedulingStatusFieldName == "StartTime" && schedulingStatusField.Interface().(*metav1.Time).After(objTime.Time)) ||
-						(schedulingStatusFieldName == "CompletionTime" && schedulingStatusField.Interface().(*metav1.Time).Before(objTime)) {
-						schedulingStatusField.Set(objStatusField)
-					}
-				case int32:
-					current := schedulingStatusField.Int()
-					additional := objStatusField.Int()
-					schedulingStatusField.SetInt(current + additional)
-				default:
-					glog.V(2).Infof("unrecognized type %T!\n", t)
+		jobStatus := clusterObj.(*batchv1.Job).Status
+
+		// Save off the complete and failed conditions with later transition times
+		for _, condition := range jobStatus.Conditions {
+			if condition.Type == batchv1.JobComplete {
+				if scheduleStatus.CompleteCondition == nil || scheduleStatus.CompleteCondition.LastTransitionTime.Before(condition.LastTransitionTime) {
+					scheduleStatus.CompleteCondition = condition
+				}
+			} else if condition.Type == batchv1.JobFailed {
+				if scheduleStatus.FailedCondition == nil || scheduleStatus.FailedCondition.LastTransitionTime.Before(condition.LastTransitionTime) {
+					scheduleStatus.FailedCondition = condition
 				}
 			}
 		}
+
+		// Save off the start time if it comes after the
+		// latest start time we've found so far
+		if jobStatus.StartTime != nil {
+			if scheduleStatus.StartTime == nil || scheduleStatus.StartTime.After(jobStatus.StartTime.Time) {
+				scheduleStatus.StartTime = jobStatus.StartTime
+			}
+		}
+
+		// Save off the completion time if it comes before the
+		// earliest completion time we've found so far
+		if jobStatus.CompletionTime != nil {
+			if scheduleStatus.CompletionTime == nil || scheduleStatus.CompletionTime.Before(jobStatus.CompletionTime.Time) {
+				scheduleStatus.CompletionTime = jobStatus.CompletionTime
+			}
+		}
+
+		// Increment running counts
+		scheduleStatus.Active += jobStatus.Active
+		scheduleStatus.Succeeded += jobStatus.Succeeded
+		scheduleStatus.Failed += jobStatus.Failed
 	}
 
+	// Update the federated job parallelism and completions based on what has
+	// previously been calculated and saved in the scheduling info. Also set
+	// manual selector to true in order to create job objects in underlying
+	// clusters with an already populated UID when federated job was initially
+	// created
 	var action ScheduleAction = ActionAdd
 	manualSelector := true
 	specParallelism := int32(*clusterScheduleState.parallelism)

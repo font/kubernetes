@@ -51,20 +51,45 @@ func NewJobAdapter(client federationclientset.Interface, config *restclient.Conf
 		updateStatusFunc: func(obj pkgruntime.Object, schedulingInfo interface{}) error {
 			job := obj.(*batchv1.Job)
 			typedStatus := schedulingInfo.(*JobSchedulingInfo).Status
-			//if !typedStatus.StartTime.Equal(job.Status.StartTime) || !typedStatus.CompletionTime.Equal(job.Status.CompletionTime) ||
-			//	typedStatus.Active != job.Status.Active || typedStatus.Succeeded != job.Status.Succeeded || typedStatus.Failed != job.Status.Failed {
+			updateJob := false
+
+			// Check if we have any failed or complete conditions to update
+			if typedStatus.FailedCondition != nil {
+				job.Status.Conditions = append(job.Status.Conditions, typedStatus.FailedCondition)
+				updateJob = true
+			}
+			if typedStatus.CompleteCondition != nil {
+				job.Status.Conditions = append(job.Status.Conditions, typedStatus.CompleteCondition)
+				updateJob = true
+			}
+
+			// TODO: check job status starttime nil?
+			// Check if we have any start or completion times to update
+			if typedStatus.StartTime != nil && !typedStatus.StartTime.Equal(job.Status.StartTime) {
+				typedStatus.StartTime.DeepCopyInto(job.Status.StartTime)
+				updateJob = true
+			}
+			// TODO: check job status completiontime nil?
+			if typedStatus.CompletionTime != nil && !typedStatus.CompletionTime.Equal(job.Status.CompletionTime) {
+				typedStatus.CompletionTime.DeepCopyInto(job.Status.CompletionTime)
+				updateJob = true
+			}
+
+			// check if job counts need to be updated
 			if typedStatus.Active != job.Status.Active || typedStatus.Succeeded != job.Status.Succeeded || typedStatus.Failed != job.Status.Failed {
 				job.Status = batchv1.JobStatus{
 					Active:    typedStatus.Active,
 					Succeeded: typedStatus.Succeeded,
 					Failed:    typedStatus.Failed,
 				}
-				// TODO: Conditions
-				typedStatus.StartTime.DeepCopyInto(job.Status.StartTime)
-				typedStatus.CompletionTime.DeepCopyInto(job.Status.CompletionTime)
+				updateJob = true
+			}
+
+			if updateJob {
 				_, err := client.BatchV1().Jobs(job.Namespace).UpdateStatus(job)
 				return err
 			}
+
 			return nil
 		},
 	}
